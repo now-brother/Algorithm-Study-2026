@@ -1,0 +1,84 @@
+name: Study Commit Notification
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths-ignore:
+      - '.github/**'  # .github 폴더 변경은 무시
+      - 'README.md'
+
+jobs:
+  notify-commit:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+      
+      - name: Extract commit information
+        id: commit_info
+        run: |
+          # 커밋 정보 추출
+          COMMIT_SHA=$(git rev-parse --short HEAD)
+          COMMIT_MESSAGE=$(git log -1 --pretty=%B | head -1)
+          COMMIT_AUTHOR=$(git log -1 --pretty=%an)
+          COMMIT_TIMESTAMP=$(git log -1 --pretty=%cI)
+          
+          # GitHub Output에 저장
+          echo "sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
+          echo "message=$COMMIT_MESSAGE" >> $GITHUB_OUTPUT
+          echo "author=$COMMIT_AUTHOR" >> $GITHUB_OUTPUT
+          echo "timestamp=$COMMIT_TIMESTAMP" >> $GITHUB_OUTPUT
+          
+          # 디버깅
+          echo "Commit SHA: $COMMIT_SHA"
+          echo "Commit Message: $COMMIT_MESSAGE"
+          echo "Commit Author: $COMMIT_AUTHOR"
+          echo "Commit Timestamp: $COMMIT_TIMESTAMP"
+      
+      - name: Notify Lambda via API
+        env:
+          API_URL: ${{ secrets.LAMBDA_API_URL }}
+          API_KEY: ${{ secrets.API_KEY }}
+        run: |
+          # JSON 페이로드 생성
+          PAYLOAD=$(cat <<EOF
+          {
+            "author": "${{ github.actor }}",
+            "author_name": "${{ steps.commit_info.outputs.author }}",
+            "sha": "${{ steps.commit_info.outputs.sha }}",
+            "message": "${{ steps.commit_info.outputs.message }}",
+            "timestamp": "${{ steps.commit_info.outputs.timestamp }}",
+            "repository": "${{ github.repository }}",
+            "ref": "${{ github.ref }}"
+          }
+          EOF
+          )
+          
+          echo "Sending payload:"
+          echo "$PAYLOAD"
+          
+          # API 호출
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "${API_URL}/commit" \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: ${API_KEY}" \
+            -d "$PAYLOAD")
+          
+          # 응답 코드 확인
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          
+          echo "Response Code: $HTTP_CODE"
+          echo "Response Body: $BODY"
+          
+          # 200번대가 아니면 실패
+          if [[ $HTTP_CODE -lt 200 || $HTTP_CODE -ge 300 ]]; then
+            echo "❌ API call failed with code $HTTP_CODE"
+            exit 1
+          fi
+          
+          echo "✅ API call successful"
