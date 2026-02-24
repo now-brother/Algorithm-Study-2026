@@ -1,0 +1,77 @@
+name: Create Weekly Folder
+
+on:
+  schedule:
+    - cron: '0 0 * * MON'  # 월요일 09:00 KST = 00:00 UTC
+  workflow_dispatch:  # 수동 실행
+
+jobs:
+  create-folder:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Create weekly folder
+        run: |
+          # 스터디 시작일 (2026-02-23 = 첫 주 월요일)
+          START_DATE="2026-02-23"
+          
+          # 현재 날짜
+          CURRENT_DATE=$(date +%Y-%m-%d)
+          
+          # 시작일부터 몇 주차인지 계산
+          START_EPOCH=$(date -d "$START_DATE" +%s)
+          CURRENT_EPOCH=$(date -d "$CURRENT_DATE" +%s)
+          DIFF_DAYS=$(( ($CURRENT_EPOCH - $START_EPOCH) / 86400 ))
+          WEEK_NUM=$(( ($DIFF_DAYS / 7) + 1 ))
+          
+          FOLDER="wk$(printf %02d $WEEK_NUM)"
+          
+          # 이미 있으면 스킵
+          if [ -d "$FOLDER" ]; then
+            echo "Folder $FOLDER already exists"
+            exit 0
+          fi
+          
+          # 폴더 생성
+          mkdir -p $FOLDER
+          
+          # 이번 주 월요일~일요일 날짜 계산
+          MONDAY=$(date -d "$CURRENT_DATE" +%Y-%m-%d)
+          SUNDAY=$(date -d "$CURRENT_DATE + 6 days" +%Y-%m-%d)
+          
+          # README 생성
+          cat > $FOLDER/README.md << EOF
+# 📅 Week $WEEK_NUM 알고리즘 스터디 목표
+
+## 강나은
+### 🎯 목표
+
+
+## 신유진
+### 🎯 목표
+
+
+## 이다연
+### 🎯 목표
+
+
+## 안민혁
+### 🎯 목표
+
+
+## 이영훈
+### 🎯 목표
+
+
+## 이재형
+### 🎯 목표
+
+EOF
+          
+          # 커밋 
+          git config user.name "Yujin-Shin-hub"
+          git config user.email "sheenie5225@gmail.com"
+          git add $FOLDER
+          git commit -m "docs: Create week $WEEK_NUM folder [skip ci]"
+          git push
